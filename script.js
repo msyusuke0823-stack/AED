@@ -1,4 +1,4 @@
-/* AEDナビ - 最寄りAEDへの徒歩最短経路
+/* 日田AEDナビ - 日田市内の最寄りAEDへの徒歩最短経路
  * データ: AED.xlsx (シート「AED」/ 無ければ先頭シート)
  * 地図: Leaflet + OpenStreetMap / 経路: routing.openstreetmap.de (徒歩)
  */
@@ -7,8 +7,18 @@
 // ====== 設定 ======
 const CONFIG = {
   xlsxPath: 'AED.xlsx',
-  defaultCenter: [33.3217, 130.9418], // 初期表示位置 (データが読めたらデータ範囲に合わせる)
-  defaultZoom: 15,
+  // ---- 日田市(大分県)向け設定 ----
+  cityName: '日田市',
+  defaultCenter: [33.3216, 130.9419], // 初期表示位置: JR日田駅付近
+  defaultZoom: 14,
+  // 日田市全域を含む概算の矩形 [[南, 西], [北, 東]] (市境そのものではありません)
+  cityBounds: [[33.02, 130.70], [33.50, 131.30]],
+  // 現在地が取れないとき用の「出発地」候補 (概算位置。必要に応じて修正してください)
+  startPoints: [
+    { label: 'JR日田駅付近', lat: 33.3216, lon: 130.9419 },
+    { label: '豆田町付近',   lat: 33.3205, lon: 130.9447 },
+    { label: '日田市役所付近', lat: 33.3220, lon: 130.9411 },
+  ],
   candidateCount: 5,                  // 直線距離の近い順に、実際の徒歩経路を調べる件数
   walkSpeedMPerMin: 80,               // 徒歩速度 (m/分) ※一般的な目安
   routeUrl: 'https://routing.openstreetmap.de/routed-foot/route/v1/foot/',
@@ -49,6 +59,7 @@ const el = {
   result: $('result'),
   listWrap: $('list-wrap'),
   list: $('nearby-list'),
+  startPoints: $('start-points'),
   fallback: $('fallback'),
   fileInput: $('file-input'),
 };
@@ -189,7 +200,16 @@ function makeIcon(cls, label) {
 }
 
 function initMap() {
-  state.map = L.map('map', { zoomControl: true }).setView(CONFIG.defaultCenter, CONFIG.defaultZoom);
+  // 日田市周辺に表示範囲を制限
+  state.map = L.map('map', {
+    zoomControl: true,
+    minZoom: 10,
+    maxBounds: L.latLngBounds(CONFIG.cityBounds).pad(0.3),
+    maxBoundsViscosity: 0.8,
+  }).setView(CONFIG.defaultCenter, CONFIG.defaultZoom);
+  // 日田市の範囲を薄く表示
+  L.rectangle(CONFIG.cityBounds, { color: '#c0392b', weight: 1, fill: false, dashArray: '4 6', interactive: false })
+    .addTo(state.map);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
@@ -247,7 +267,17 @@ function clearRoute() {
 }
 
 // ====== 現在地 ======
+function isInCity(lat, lon) {
+  const [[s, w], [n, e]] = CONFIG.cityBounds;
+  return lat >= s && lat <= n && lon >= w && lon <= e;
+}
+
 function setUserPosition(lat, lon, label) {
+  if (!isInCity(lat, lon)) {
+    // 日田市外: 地図の範囲外で位置が見えなくなるのを防ぐため、設定せず案内する
+    setStatus(`${label}は${CONFIG.cityName}の範囲外です。${CONFIG.cityName}内の地点を地図で指定するか、下の出発地から選んでください。`, 'warn');
+    return;
+  }
   state.user = { lat, lon };
   if (state.userMarker) state.userMarker.remove();
   state.userMarker = L.marker([lat, lon], { icon: makeIcon('me', '●'), zIndexOffset: 2000 })
@@ -478,6 +508,18 @@ function showResult(best, { apiFailed, closedOnArrival }) {
 // ====== 初期化 ======
 function init() {
   initMap();
+  // 出発地の候補ボタンを生成 (GPSが使えない場合用)
+  CONFIG.startPoints.forEach((p) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = p.label;
+    b.addEventListener('click', () => {
+      setUserPosition(p.lat, p.lon, p.label);
+      state.map.setView([p.lat, p.lon], 16);
+    });
+    el.startPoints.appendChild(b);
+  });
   el.locate.addEventListener('click', locate);
   el.search.addEventListener('click', findShortest);
   el.fileInput.addEventListener('change', async (e) => {

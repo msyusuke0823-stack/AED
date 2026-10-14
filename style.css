@@ -112,6 +112,15 @@ body {
 .check input { width: 18px; height: 18px; accent-color: var(--red); }
 
 .hint { margin: 0; font-size: .8rem; color: var(--muted); }
+.app-header small { font-size: .7rem; font-weight: 400; opacity: .9; margin-left: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  font: inherit; font-size: .8rem;
+  background: #fff; color: var(--ink);
+  border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 11px; cursor: pointer;
+}
+.chip:hover { border-color: var(--blue); color: var(--blue); }
 
 .status {
   margin: 12px 0;
